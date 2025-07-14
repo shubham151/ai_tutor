@@ -1,12 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import ChatPanel, {
-  Message as ChatUIMessage,
-} from "@/app/components/chat/ChatPanel";
+import ChatPanel, { Message as ChatUIMessage } from "@/app/components/chat/ChatPanel";
 import { Message as ChatCore } from "@/app/components/chat/Message";
+import { Api } from "@/app/core/Api";
 
-// SSR disabled for PDF viewer
+// Dynamically load PDF Viewer (SSR off)
 const PdfViewer = dynamic(() => import("@/app/components/pdf/PdfViewer"), {
   ssr: false,
 });
@@ -15,25 +14,32 @@ export default function PdfChatLayout() {
   const [file, setFile] = useState<File | null>(null);
   const [messages, setMessages] = useState<ChatUIMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false); // ← track init state
+  const [pdfPages, setPdfPages] = useState<{ page: number; text: string }[]>([]);
+  const [ready, setReady] = useState(false);
 
-  // Init onUpdate once (safe guard)
+  
+function handleExtract(pages: { page: number; text: string }[]) {
+  setPdfPages(pages);
+
+  if (file) {
+    Api.post("pdf-context", {
+      fileName: file.name,
+      pages,
+    }).catch((err) => {
+      console.error("Failed to send PDF context:", err);
+    });
+  }
+}
   useEffect(() => {
     ChatCore.onUpdate((msgs, isLoading) => {
       setLoading(isLoading);
       setMessages((prev) => {
-        console.log(
-          "setMessages:",
-          msgs.map((m) => m.content)
-        );
-
         if (prev.length !== msgs.length) {
           return msgs.map((m) => ({
             sender: m.role === "user" ? "user" : "ai",
             text: m.content,
           }));
         }
-
         const updated = [...prev];
         updated[updated.length - 1] = {
           ...updated[updated.length - 1],
@@ -42,33 +48,34 @@ export default function PdfChatLayout() {
         return updated;
       });
     });
-
-    setReady(true); // enable sending after onUpdate is ready
+    setReady(true);
   }, []);
 
-  // Optional: Reset chat on PDF upload
-  // useEffect(() => {
-  //   if (file) {
-  //     setMessages([]);
-  //     ChatCore.reset?.(); // only if you add reset method in Message.ts
-  //   }
-  // }, [file]);
+  async function handleSend(userPrompt: string) {
+    if (!ready) return;
 
-  // Send a user message and stream AI reply
-  async function handleSend(text: string) {
-    if (!ready) {
-      console.warn("Chat system not initialized yet.");
-      return;
-    }
+    const selectedPages = pdfPages.slice(0, 3); // take first 3 pages for now
+    const pdfContext = selectedPages.map(
+      (p) => `Page ${p.page}:\n${p.text}`
+    ).join("\n\n");
 
-    ChatCore.send(text, (errMsg: string) => {
+    const augmentedPrompt = `
+You are a PDF assistant. Use the following context from the PDF:
+
+${pdfContext}
+
+User asks: "${userPrompt}"
+Respond clearly, and if possible, specify which page the answer is from.
+`;
+
+    ChatCore.send(augmentedPrompt, (errMsg: string) => {
       console.error("Chat error:", errMsg);
     });
   }
 
   return (
     <div className="h-screen w-full flex">
-      {/* LEFT: PDF upload + viewer */}
+      {/* LEFT: PDF */}
       <div className="w-1/2 border-r flex flex-col items-center justify-start p-4 bg-gray-100 h-full">
         <input
           type="file"
@@ -79,7 +86,8 @@ export default function PdfChatLayout() {
         <div className="flex-1 w-full flex justify-center items-center">
           {file ? (
             <div className="w-full max-w-[600px]">
-              <PdfViewer file={file} />
+              <PdfViewer file={file} onExtract={handleExtract} />
+
             </div>
           ) : (
             <div className="text-gray-500">Upload a PDF to get started</div>
@@ -87,7 +95,7 @@ export default function PdfChatLayout() {
         </div>
       </div>
 
-      {/* RIGHT: Chat panel */}
+      {/* RIGHT: Chat */}
       <div className="w-1/2 h-full flex flex-col">
         <ChatPanel messages={messages} onSend={handleSend} loading={loading} />
       </div>
