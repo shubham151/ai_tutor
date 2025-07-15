@@ -14,6 +14,8 @@ model User {
   emailConfirmedAt DateTime?
   createdAt        DateTime  @default(now())
   otps             UserOtp[]
+  pdfs             PdfFile[]       @relation("UserPdfFiles")
+  conversations    Conversation[]  @relation("UserConversations")
 }
 
 model UserOtp {
@@ -24,4 +26,43 @@ model UserOtp {
   User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+
+model PdfFile {
+  id             String         @id @default(uuid())
+  name           String
+  hash           String         @unique
+  uploadedAt     DateTime       @default(now())
+  ownerId        String
+  owner          User           @relation(name: "UserPdfFiles", fields: [ownerId], references: [id], onDelete: Cascade)
+  conversations  Conversation[]
+
+  @@index([ownerId])
+}
+
+model Conversation {
+  id        String      @id @default(uuid())
+  userId    String
+  pdfId     String
+  createdAt DateTime    @default(now())
+  user      User        @relation(name: "UserConversations", fields: [userId], references: [id], onDelete: Cascade)
+  pdf       PdfFile     @relation(fields: [pdfId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@index([userId])
+  @@index([pdfId])
+}
+
+
+model Message {
+  id             String        @id @default(uuid())
+  conversationId String
+  role           String
+  content        String
+  createdAt      DateTime      @default(now())
+  highlight      Json?
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
 }
