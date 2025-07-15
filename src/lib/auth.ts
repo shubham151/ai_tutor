@@ -35,3 +35,21 @@ export async function setRefreshTokenCookie(token: string) {
 export async function clearRefreshTokenCookie() {
   (await cookies()).delete("refresh-token");
 }
+
+export function getUserIdFromRequest(): string | null {
+  const accessToken = cookies().get("access-token")?.value;
+  if (!accessToken) return null;
+
+  const decoded = verifyToken(accessToken);
+  return decoded?.id || null;
+}
+
+export const Auth = {
+  createAccessToken, 
+  createRefreshToken, 
+  verifyToken, 
+  setRefreshTokenCookie, 
+  clearRefreshTokenCookie, 
+  getUserIdFromRequest
+}
+
